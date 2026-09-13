@@ -141,7 +141,6 @@ public final class JobPortalFrame extends JFrame {
 
         JTabbedPane tabs = new JTabbedPane();
         activeTabs = tabs;
-        activeTabs = tabs;
         tabs.setBorder(new EmptyBorder(18, 0, 0, 0));
         tabs.setFont(new Font("SansSerif", Font.BOLD, 13));
         if (user instanceof JobSeeker seeker) buildSeekerTabs(tabs, seeker);
@@ -346,29 +345,6 @@ public final class JobPortalFrame extends JFrame {
             score.setPreferredSize(new Dimension(130, 100));
             hero.add(score, BorderLayout.EAST);
         }
-        hero.setCursor(
-                Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-        );
-
-        hero.setToolTipText("Open Discover jobs");
-
-        hero.addMouseListener(
-                new java.awt.event.MouseAdapter() {
-
-                    @Override
-                    public void mouseClicked(
-                            java.awt.event.MouseEvent e
-                    ) {
-
-                        if (activeTabs != null &&
-                                activeTabs.getTabCount() > 1) {
-
-                            activeTabs.setSelectedIndex(1);
-                        }
-                    }
-                }
-        );
-
         hero.setCursor(
                 Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         );
