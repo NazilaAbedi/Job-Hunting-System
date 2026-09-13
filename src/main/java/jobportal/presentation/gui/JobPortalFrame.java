@@ -1,0 +1,442 @@
+package jobportal.presentation.gui;
+
+import jobportal.config.ApplicationContext;
+import jobportal.domain.job.Application;
+import jobportal.domain.job.ApplicationStatus;
+import jobportal.domain.job.JobPosting;
+import jobportal.domain.resume.Resume;
+import jobportal.domain.resume.Skill;
+import jobportal.domain.user.Admin;
+import jobportal.domain.user.Employer;
+import jobportal.domain.user.JobSeeker;
+import jobportal.domain.user.User;
+
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
+import javax.swing.table.DefaultTableModel;
+import java.awt.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+@SuppressWarnings("serial")
+public final class JobPortalFrame extends JFrame {
+    private final ApplicationContext ctx;
+    private final CardLayout rootLayout = new CardLayout();
+    private final JPanel root = new JPanel(rootLayout);
+    private User currentUser;
+
+    public JobPortalFrame(ApplicationContext ctx) {
+        super("Jobly — Smart Job Hunting Platform");
+        this.ctx = ctx;
+        Theme.install();
+        setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
+        setMinimumSize(new Dimension(1060, 700));
+        setSize(1180, 760);
+        setLocationRelativeTo(null);
+        root.add(buildLogin(), "login");
+        setContentPane(root);
+        rootLayout.show(root, "login");
+    }
+
+    private JPanel buildLogin() {
+        JPanel page = new JPanel(new GridBagLayout());
+        page.setBackground(Theme.BG);
+
+        JPanel shell = new JPanel(new GridLayout(1, 2, 0, 0));
+        shell.setPreferredSize(new Dimension(900, 540));
+        shell.setBackground(Theme.SURFACE);
+        shell.setBorder(BorderFactory.createLineBorder(Theme.BORDER, 1, true));
+
+        JPanel brand = new JPanel();
+        brand.setLayout(new BoxLayout(brand, BoxLayout.Y_AXIS));
+        brand.setBackground(Theme.PRIMARY);
+        brand.setBorder(new EmptyBorder(54, 48, 48, 48));
+        JLabel logo = Theme.label("JOBLY", 15, Font.BOLD, Color.WHITE);
+        logo.setAlignmentX(Component.LEFT_ALIGNMENT);
+        brand.add(logo);
+        brand.add(Box.createVerticalStrut(85));
+        JLabel hero = Theme.label("Build your next move.", 31, Font.BOLD, Color.WHITE);
+        hero.setAlignmentX(Component.LEFT_ALIGNMENT);
+        brand.add(hero);
+        brand.add(Box.createVerticalStrut(14));
+        JLabel copy = new JLabel("<html><div style='width:310px'>A focused workspace for discovering opportunities, matching skills, tracking applications and understanding the job market.</div></html>");
+        copy.setFont(new Font("SansSerif", Font.PLAIN, 15));
+        copy.setForeground(new Color(224, 231, 255));
+        copy.setAlignmentX(Component.LEFT_ALIGNMENT);
+        brand.add(copy);
+        brand.add(Box.createVerticalGlue());
+        JLabel badge = Theme.label("Smart matching  •  Resume tools  •  Analytics", 12, Font.PLAIN, new Color(224, 231, 255));
+        badge.setAlignmentX(Component.LEFT_ALIGNMENT);
+        brand.add(badge);
+
+        JPanel form = new JPanel();
+        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
+        form.setBackground(Theme.SURFACE);
+        form.setBorder(new EmptyBorder(58, 58, 44, 58));
+        JLabel welcome = Theme.label("Welcome back", 27, Font.BOLD, Theme.TEXT);
+        welcome.setAlignmentX(Component.LEFT_ALIGNMENT);
+        form.add(welcome);
+        form.add(Box.createVerticalStrut(8));
+        JLabel helper = Theme.label("Sign in to continue to your workspace", 13, Font.PLAIN, Theme.MUTED);
+        helper.setAlignmentX(Component.LEFT_ALIGNMENT);
+        form.add(helper);
+        form.add(Box.createVerticalStrut(34));
+
+        form.add(fieldLabel("Username"));
+        form.add(Box.createVerticalStrut(7));
+        JTextField username = styledTextField();
+        username.setText("seeker");
+        form.add(username);
+        form.add(Box.createVerticalStrut(18));
+        form.add(fieldLabel("Password"));
+        form.add(Box.createVerticalStrut(7));
+        JPasswordField password = new JPasswordField("seek123");
+        styleField(password);
+        form.add(password);
+        form.add(Box.createVerticalStrut(24));
+        JButton login = Theme.primaryButton("Sign in");
+        login.setMaximumSize(new Dimension(Integer.MAX_VALUE, 44));
+        login.setAlignmentX(Component.LEFT_ALIGNMENT);
+        form.add(login);
+        form.add(Box.createVerticalStrut(22));
+        JLabel demo = new JLabel("<html><b>Demo accounts</b><br>seeker / seek123&nbsp;&nbsp;•&nbsp;&nbsp;employer / emp123&nbsp;&nbsp;•&nbsp;&nbsp;admin / admin123</html>");
+        demo.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        demo.setForeground(Theme.MUTED);
+        demo.setAlignmentX(Component.LEFT_ALIGNMENT);
+        form.add(demo);
+
+        Runnable signIn = () -> {
+            String u = username.getText().trim();
+            String p = new String(password.getPassword());
+            ctx.auth.login(u, p).ifPresentOrElse(this::openDashboard,
+                    () -> JOptionPane.showMessageDialog(this, "Username or password is incorrect.", "Sign in failed", JOptionPane.ERROR_MESSAGE));
+        };
+        login.addActionListener(e -> signIn.run());
+        password.addActionListener(e -> signIn.run());
+
+        shell.add(brand);
+        shell.add(form);
+        page.add(shell);
+        return page;
+    }
+
+    private void openDashboard(User user) {
+        currentUser = user;
+        JPanel dashboard = buildDashboard(user);
+        root.add(dashboard, "dashboard");
+        rootLayout.show(root, "dashboard");
+    }
+
+    private JPanel buildDashboard(User user) {
+        JPanel page = new JPanel(new BorderLayout());
+        page.setBackground(Theme.BG);
+        page.add(buildSidebar(user), BorderLayout.WEST);
+
+        JPanel content = new JPanel(new BorderLayout());
+        content.setOpaque(false);
+        content.setBorder(new EmptyBorder(26, 28, 28, 28));
+        content.add(buildHeader(user), BorderLayout.NORTH);
+
+        JTabbedPane tabs = new JTabbedPane();
+        tabs.setBorder(new EmptyBorder(18, 0, 0, 0));
+        tabs.setFont(new Font("SansSerif", Font.BOLD, 13));
+        if (user instanceof JobSeeker seeker) buildSeekerTabs(tabs, seeker);
+        else if (user instanceof Employer employer) buildEmployerTabs(tabs, employer);
+        else if (user instanceof Admin admin) buildAdminTabs(tabs, admin);
+        content.add(tabs, BorderLayout.CENTER);
+        page.add(content, BorderLayout.CENTER);
+        return page;
+    }
+
+    private JPanel buildSidebar(User user) {
+        JPanel side = new JPanel();
+        side.setPreferredSize(new Dimension(220, 0));
+        side.setBackground(new Color(17, 24, 39));
+        side.setLayout(new BoxLayout(side, BoxLayout.Y_AXIS));
+        side.setBorder(new EmptyBorder(30, 24, 24, 24));
+
+        JLabel logo = Theme.label("JOBLY", 18, Font.BOLD, Color.WHITE);
+        logo.setAlignmentX(Component.LEFT_ALIGNMENT);
+        side.add(logo);
+        side.add(Box.createVerticalStrut(8));
+        JLabel role = Theme.label(roleName(user), 11, Font.PLAIN, new Color(148, 163, 184));
+        role.setAlignmentX(Component.LEFT_ALIGNMENT);
+        side.add(role);
+        side.add(Box.createVerticalStrut(34));
+
+        String[] items = user instanceof JobSeeker
+                ? new String[]{"Overview", "Discover jobs", "Applications", "Resume", "Inbox"}
+                : user instanceof Employer
+                ? new String[]{"Overview", "Job posts", "Candidates", "Inbox"}
+                : new String[]{"Overview", "Market analytics", "Users", "Reports"};
+        for (int i = 0; i < items.length; i++) {
+            JLabel item = Theme.label((i == 0 ? "●  " : "○  ") + items[i], 13, i == 0 ? Font.BOLD : Font.PLAIN,
+                    i == 0 ? Color.WHITE : new Color(203, 213, 225));
+            item.setAlignmentX(Component.LEFT_ALIGNMENT);
+            side.add(item);
+            side.add(Box.createVerticalStrut(20));
+        }
+        side.add(Box.createVerticalGlue());
+        JButton logout = new JButton("Sign out");
+        logout.setAlignmentX(Component.LEFT_ALIGNMENT);
+        logout.setForeground(new Color(226, 232, 240));
+        logout.setBackground(new Color(31, 41, 55));
+        logout.setFocusPainted(false);
+        logout.setBorder(new EmptyBorder(10, 15, 10, 15));
+        logout.addActionListener(e -> { currentUser = null; rootLayout.show(root, "login"); });
+        side.add(logout);
+        return side;
+    }
+
+    private JPanel buildHeader(User user) {
+        JPanel header = new JPanel(new BorderLayout());
+        header.setOpaque(false);
+        JPanel text = new JPanel();
+        text.setOpaque(false);
+        text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
+        JLabel title = Theme.label("Good to see you, " + firstName(user.getFullName()), 25, Font.BOLD, Theme.TEXT);
+        title.setAlignmentX(Component.LEFT_ALIGNMENT);
+        text.add(title);
+        text.add(Box.createVerticalStrut(5));
+        JLabel sub = Theme.label("Here’s what’s happening in your job-hunting workspace.", 13, Font.PLAIN, Theme.MUTED);
+        sub.setAlignmentX(Component.LEFT_ALIGNMENT);
+        text.add(sub);
+        header.add(text, BorderLayout.WEST);
+
+        JLabel profile = Theme.label(user.getFullName() + "   ●", 12, Font.BOLD, Theme.TEXT);
+        header.add(profile, BorderLayout.EAST);
+        return header;
+    }
+
+    private void buildSeekerTabs(JTabbedPane tabs, JobSeeker seeker) {
+        tabs.addTab("Overview", seekerOverview(seeker));
+        tabs.addTab("Discover jobs", seekerJobs(seeker));
+        tabs.addTab("Applications", seekerApplications(seeker));
+        tabs.addTab("Resume", seekerResume(seeker));
+        tabs.addTab("Inbox", inboxPanel(seeker));
+    }
+
+    private JPanel seekerOverview(JobSeeker seeker) {
+        JPanel page = verticalPage();
+        JPanel stats = new JPanel(new GridLayout(1, 4, 14, 0));
+        stats.setOpaque(false);
+        int apps = ctx.applicationService.listBySeeker(seeker.getId()).size();
+        stats.add(statCard("Open roles", String.valueOf(ctx.jobPostings.listActive().size()), "Ready to explore"));
+        stats.add(statCard("Applications", String.valueOf(apps), apps == 0 ? "Start with a strong match" : "Tracked in one place"));
+        stats.add(statCard("Resumes", String.valueOf(ctx.resumeService.list(seeker.getId()).size()), "Profile ready"));
+        stats.add(statCard("Notifications", String.valueOf(seeker.getInbox().size()), "Updates from employers"));
+        page.add(stats);
+        page.add(Box.createVerticalStrut(16));
+
+        JPanel hero = card();
+        hero.setLayout(new BorderLayout(20, 0));
+        JPanel copy = new JPanel(); copy.setOpaque(false); copy.setLayout(new BoxLayout(copy, BoxLayout.Y_AXIS));
+        copy.add(Theme.label("Your next best opportunity", 18, Font.BOLD, Theme.TEXT));
+        copy.add(Box.createVerticalStrut(7));
+        copy.add(Theme.label("Jobs are ranked by skill fit and salary alignment.", 13, Font.PLAIN, Theme.MUTED));
+        JobPosting best = null; double bestScore = -1;
+        List<Resume> resumes = ctx.resumeService.list(seeker.getId());
+        if (!resumes.isEmpty()) {
+            for (JobPosting j : ctx.jobPostings.listActive()) {
+                double s = ctx.matching.calculateMatchScore(seeker, j, resumes.get(0));
+                if (s > bestScore) { bestScore = s; best = j; }
+            }
+        }
+        if (best != null) {
+            copy.add(Box.createVerticalStrut(22));
+            copy.add(Theme.label(best.getTitle(), 21, Font.BOLD, Theme.PRIMARY_DARK));
+            copy.add(Box.createVerticalStrut(6));
+            copy.add(Theme.label(best.getLocation() + "  •  " + money(best.getMinSalary()) + "–" + money(best.getMaxSalary()), 12, Font.PLAIN, Theme.MUTED));
+        }
+        hero.add(copy, BorderLayout.CENTER);
+        if (bestScore >= 0) {
+            JLabel score = new JLabel("<html><div style='text-align:center'><span style='font-size:28px'><b>" + (int)bestScore + "%</b></span><br>match score</div></html>", SwingConstants.CENTER);
+            score.setForeground(Theme.SUCCESS);
+            score.setPreferredSize(new Dimension(130, 100));
+            hero.add(score, BorderLayout.EAST);
+        }
+        page.add(hero);
+        return page;
+    }
+
+    private JPanel seekerJobs(JobSeeker seeker) {
+        JPanel page = new JPanel(new BorderLayout(0, 14)); page.setOpaque(false); page.setBorder(new EmptyBorder(14,0,0,0));
+        JPanel toolbar = new JPanel(new BorderLayout(10,0)); toolbar.setOpaque(false);
+        JTextField search = styledTextField(); search.setToolTipText("Search title, skill or location");
+        JButton searchBtn = Theme.primaryButton("Search");
+        toolbar.add(search, BorderLayout.CENTER); toolbar.add(searchBtn, BorderLayout.EAST); page.add(toolbar, BorderLayout.NORTH);
+        JPanel results = new JPanel(); results.setOpaque(false); results.setLayout(new BoxLayout(results, BoxLayout.Y_AXIS));
+        JScrollPane scroll = new JScrollPane(results); scroll.setBorder(null); scroll.getViewport().setBackground(Theme.BG); scroll.getVerticalScrollBar().setUnitIncrement(14);
+        page.add(scroll, BorderLayout.CENTER);
+        Runnable refresh = () -> renderJobs(results, seeker, search.getText().trim());
+        searchBtn.addActionListener(e -> refresh.run()); search.addActionListener(e -> refresh.run()); refresh.run();
+        return page;
+    }
+
+    private void renderJobs(JPanel target, JobSeeker seeker, String keyword) {
+        target.removeAll();
+        List<JobPosting> jobs = keyword.isBlank() ? ctx.jobPostings.listActive() : ctx.jobPostings.search(keyword);
+        List<Resume> resumes = ctx.resumeService.list(seeker.getId());
+        for (JobPosting job : jobs) {
+            JPanel c = card(); c.setMaximumSize(new Dimension(Integer.MAX_VALUE, 150)); c.setLayout(new BorderLayout(18,0));
+            JPanel left = new JPanel(); left.setOpaque(false); left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
+            left.add(Theme.label(job.getTitle(), 17, Font.BOLD, Theme.TEXT));
+            left.add(Box.createVerticalStrut(5));
+            left.add(Theme.label(job.getLocation() + "  •  " + money(job.getMinSalary()) + "–" + money(job.getMaxSalary()), 12, Font.PLAIN, Theme.MUTED));
+            left.add(Box.createVerticalStrut(9));
+            left.add(Theme.label(skillLine(job.getRequiredSkills()), 12, Font.PLAIN, Theme.PRIMARY_DARK));
+            left.add(Box.createVerticalStrut(7));
+            left.add(new JLabel("<html><div style='width:600px;color:#64748b'>" + escape(job.getDescription()) + "</div></html>"));
+            c.add(left, BorderLayout.CENTER);
+            JPanel actions = new JPanel(); actions.setOpaque(false); actions.setLayout(new BoxLayout(actions, BoxLayout.Y_AXIS));
+            if (!resumes.isEmpty()) {
+                double score = ctx.matching.calculateMatchScore(seeker, job, resumes.get(0));
+                JLabel match = Theme.label((int)score + "% match", 12, Font.BOLD, score >= 70 ? Theme.SUCCESS : Theme.MUTED);
+                match.setAlignmentX(Component.CENTER_ALIGNMENT); actions.add(match); actions.add(Box.createVerticalStrut(12));
+            }
+            JButton apply = Theme.primaryButton("Apply now"); apply.setAlignmentX(Component.CENTER_ALIGNMENT);
+            apply.addActionListener(e -> {
+                try {
+                    ctx.applicationService.apply(seeker.getId(), job.getId(), "Applied from Jobly desktop dashboard.");
+                    apply.setText("Applied"); apply.setEnabled(false);
+                } catch (RuntimeException ex) { JOptionPane.showMessageDialog(this, ex.getMessage(), "Could not apply", JOptionPane.WARNING_MESSAGE); }
+            });
+            actions.add(apply); c.add(actions, BorderLayout.EAST);
+            target.add(c); target.add(Box.createVerticalStrut(12));
+        }
+        if (jobs.isEmpty()) target.add(Theme.label("No jobs matched your search.", 14, Font.PLAIN, Theme.MUTED));
+        target.revalidate(); target.repaint();
+    }
+
+    private JPanel seekerApplications(JobSeeker seeker) {
+        JPanel page = new JPanel(new BorderLayout()); page.setOpaque(false); page.setBorder(new EmptyBorder(14,0,0,0));
+        String[] cols = {"Application", "Role", "Status", "Submitted"};
+        DefaultTableModel model = readOnlyModel(cols);
+        for (Application a : ctx.applicationService.listBySeeker(seeker.getId())) {
+            JobPosting j = ctx.jobs.findById(a.getJobPostingId()).orElse(null);
+            model.addRow(new Object[]{"#" + a.getId(), j == null ? "Unknown" : j.getTitle(), pretty(a.getStatus()), a.getApplicationDate().toLocalDate()});
+        }
+        page.add(tableCard(new JTable(model)), BorderLayout.CENTER); return page;
+    }
+
+    private JPanel seekerResume(JobSeeker seeker) {
+        JPanel page = verticalPage();
+        List<Resume> rs = ctx.resumeService.list(seeker.getId());
+        if (!rs.isEmpty()) {
+            Resume r = rs.get(0); JPanel c = card(); c.setLayout(new BoxLayout(c, BoxLayout.Y_AXIS));
+            c.add(Theme.label("Primary resume  #" + r.getId(), 18, Font.BOLD, Theme.TEXT)); c.add(Box.createVerticalStrut(10));
+            c.add(new JLabel("<html><div style='width:720px;color:#64748b'>" + escape(r.getSummary()) + "</div></html>")); c.add(Box.createVerticalStrut(15));
+            c.add(Theme.label(skillLine(r.getSkills()), 12, Font.BOLD, Theme.PRIMARY_DARK)); page.add(c);
+            page.add(Box.createVerticalStrut(14));
+            var sug = ctx.salaries.suggestSalary(r, ""); JPanel salary = card(); salary.setLayout(new BoxLayout(salary, BoxLayout.Y_AXIS));
+            salary.add(Theme.label("Market salary signal", 16, Font.BOLD, Theme.TEXT)); salary.add(Box.createVerticalStrut(8));
+            salary.add(Theme.label(money(sug.suggestedMin) + " – " + money(sug.suggestedMax), 24, Font.BOLD, Theme.SUCCESS)); salary.add(Box.createVerticalStrut(5));
+            salary.add(Theme.label(sug.rationale, 12, Font.PLAIN, Theme.MUTED)); page.add(salary);
+        }
+        return page;
+    }
+
+    private void buildEmployerTabs(JTabbedPane tabs, Employer employer) {
+        tabs.addTab("Overview", employerOverview(employer));
+        tabs.addTab("Job posts", employerJobs(employer));
+        tabs.addTab("Candidates", employerCandidates(employer));
+        tabs.addTab("Inbox", inboxPanel(employer));
+    }
+
+    private JPanel employerOverview(Employer employer) {
+        JPanel page = verticalPage();
+        List<JobPosting> mine = ctx.jobs.findAll().stream().filter(j -> j.getEmployerId() == employer.getId()).toList();
+        int applicants = mine.stream().mapToInt(j -> ctx.applications.findByJobPostingId(j.getId()).size()).sum();
+        JPanel stats = new JPanel(new GridLayout(1,3,14,0)); stats.setOpaque(false);
+        stats.add(statCard("Active postings", String.valueOf(mine.stream().filter(JobPosting::isActive).count()), "Live opportunities"));
+        stats.add(statCard("Candidates", String.valueOf(applicants), "Across all roles"));
+        stats.add(statCard("Company", employer.getCompany() == null ? "—" : employer.getCompany().getName(), "Employer workspace"));
+        page.add(stats); page.add(Box.createVerticalStrut(16));
+        JPanel callout = card(); callout.setLayout(new BoxLayout(callout, BoxLayout.Y_AXIS));
+        callout.add(Theme.label("Hiring workspace", 19, Font.BOLD, Theme.TEXT)); callout.add(Box.createVerticalStrut(8));
+        callout.add(Theme.label("Review candidates, update application stages and keep every role organized.", 13, Font.PLAIN, Theme.MUTED)); page.add(callout);
+        return page;
+    }
+
+    private JPanel employerJobs(Employer employer) {
+        JPanel page = new JPanel(new BorderLayout()); page.setOpaque(false); page.setBorder(new EmptyBorder(14,0,0,0));
+        DefaultTableModel model = readOnlyModel(new String[]{"ID","Role","Location","Salary","Applicants","Status"});
+        for (JobPosting j : ctx.jobs.findAll().stream().filter(x -> x.getEmployerId() == employer.getId()).toList())
+            model.addRow(new Object[]{j.getId(), j.getTitle(), j.getLocation(), money(j.getMinSalary()) + "–" + money(j.getMaxSalary()), ctx.applications.findByJobPostingId(j.getId()).size(), j.isActive() ? "Active" : "Closed"});
+        page.add(tableCard(new JTable(model)), BorderLayout.CENTER); return page;
+    }
+
+    private JPanel employerCandidates(Employer employer) {
+        JPanel page = new JPanel(new BorderLayout(0,12)); page.setOpaque(false); page.setBorder(new EmptyBorder(14,0,0,0));
+        DefaultTableModel model = readOnlyModel(new String[]{"Application ID","Role","Candidate","Status"});
+        List<Application> rows = new ArrayList<>();
+        for (JobPosting j : ctx.jobs.findAll().stream().filter(x -> x.getEmployerId() == employer.getId()).toList()) {
+            for (Application a : ctx.applications.findByJobPostingId(j.getId())) {
+                rows.add(a); User u = ctx.users.findById(a.getJobSeekerId()).orElse(null);
+                model.addRow(new Object[]{a.getId(), j.getTitle(), u == null ? "Unknown" : u.getFullName(), pretty(a.getStatus())});
+            }
+        }
+        JTable table = new JTable(model); page.add(tableCard(table), BorderLayout.CENTER);
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT)); actions.setOpaque(false);
+        JComboBox<ApplicationStatus> status = new JComboBox<>(ApplicationStatus.values()); JButton update = Theme.primaryButton("Update status");
+        update.addActionListener(e -> {
+            int idx = table.getSelectedRow(); if (idx < 0) { JOptionPane.showMessageDialog(this, "Select an application first."); return; }
+            try { ctx.applicationService.updateStatus(employer.getId(), rows.get(idx).getId(), (ApplicationStatus)status.getSelectedItem(), "Updated from employer dashboard"); model.setValueAt(pretty((ApplicationStatus)status.getSelectedItem()), idx, 3); }
+            catch (RuntimeException ex) { JOptionPane.showMessageDialog(this, ex.getMessage()); }
+        });
+        actions.add(status); actions.add(update); page.add(actions, BorderLayout.SOUTH); return page;
+    }
+
+    private void buildAdminTabs(JTabbedPane tabs, Admin admin) {
+        tabs.addTab("Overview", adminOverview());
+        tabs.addTab("Market analytics", adminAnalytics());
+        tabs.addTab("Users", adminUsers(admin));
+        tabs.addTab("Reports", adminReports());
+    }
+
+    private JPanel adminOverview() {
+        JPanel page = verticalPage(); JPanel stats = new JPanel(new GridLayout(1,3,14,0)); stats.setOpaque(false);
+        stats.add(statCard("Users", String.valueOf(ctx.users.findAll().size()), "Across all roles"));
+        stats.add(statCard("Open roles", String.valueOf(ctx.jobs.findAllActive().size()), "Live in marketplace"));
+        stats.add(statCard("Applications", String.valueOf(ctx.applications.findAll().size()), "Platform activity")); page.add(stats); page.add(Box.createVerticalStrut(16));
+        JPanel c = card(); c.setLayout(new BoxLayout(c, BoxLayout.Y_AXIS)); c.add(Theme.label("Platform health",18,Font.BOLD,Theme.TEXT)); c.add(Box.createVerticalStrut(9)); c.add(Theme.label(ctx.analytics.getHiringTrends().getContent().toString(),13,Font.PLAIN,Theme.MUTED)); page.add(c); return page;
+    }
+
+    private JPanel adminAnalytics() {
+        JPanel page = verticalPage(); Map<?,?> skills = (Map<?,?>) ctx.analytics.getTopDemandedSkills().getContent();
+        JPanel c = card(); c.setLayout(new BoxLayout(c, BoxLayout.Y_AXIS)); c.add(Theme.label("Top demanded skills",18,Font.BOLD,Theme.TEXT)); c.add(Box.createVerticalStrut(12));
+        skills.entrySet().stream().sorted((a,b) -> Integer.compare((Integer)b.getValue(), (Integer)a.getValue())).forEach(e -> { c.add(Theme.label(e.getKey() + "   " + e.getValue() + " postings",13,Font.BOLD,Theme.PRIMARY_DARK)); c.add(Box.createVerticalStrut(10)); }); page.add(c); return page;
+    }
+
+    private JPanel adminUsers(Admin admin) {
+        JPanel page = new JPanel(new BorderLayout()); page.setOpaque(false); page.setBorder(new EmptyBorder(14,0,0,0)); DefaultTableModel model = readOnlyModel(new String[]{"ID","Name","Username","Role","Status"});
+        List<User> users = ctx.users.findAll(); for(User u:users) model.addRow(new Object[]{u.getId(),u.getFullName(),u.getUsername(),roleName(u),u.isActive()?"Active":"Banned"});
+        JTable table = new JTable(model); page.add(tableCard(table),BorderLayout.CENTER); JButton ban=Theme.secondaryButton("Ban selected user"); ban.addActionListener(e->{int i=table.getSelectedRow(); if(i>=0){User u=users.get(i); if(u!=admin){admin.banUser(u); model.setValueAt("Banned",i,4);}}}); JPanel bottom=new JPanel(new FlowLayout(FlowLayout.RIGHT)); bottom.setOpaque(false); bottom.add(ban); page.add(bottom,BorderLayout.SOUTH); return page;
+    }
+
+    private JPanel adminReports() {
+        JPanel page=verticalPage(); JPanel c=card(); c.setLayout(new BoxLayout(c,BoxLayout.Y_AXIS)); c.add(Theme.label("Workforce diversity snapshot",18,Font.BOLD,Theme.TEXT)); c.add(Box.createVerticalStrut(12)); JTextArea area=new JTextArea(String.valueOf(ctx.analytics.getWorkforceDiversityReport(ctx.users).getContent())); area.setEditable(false); area.setLineWrap(true); area.setWrapStyleWord(true); area.setBackground(Theme.SURFACE); area.setForeground(Theme.MUTED); area.setFont(new Font("Monospaced",Font.PLAIN,13)); c.add(area); page.add(c); return page;
+    }
+
+    private JPanel inboxPanel(User user) {
+        JPanel page=verticalPage(); if(user.getInbox().isEmpty()){page.add(Theme.label("No notifications yet.",14,Font.PLAIN,Theme.MUTED)); return page;}
+        user.getInbox().stream().sorted((a,b)->b.getSentDate().compareTo(a.getSentDate())).forEach(n->{JPanel c=card(); c.setLayout(new BoxLayout(c,BoxLayout.Y_AXIS)); c.add(Theme.label(n.getMessage(),13,Font.BOLD,Theme.TEXT)); c.add(Box.createVerticalStrut(5)); c.add(Theme.label(n.getSentDate().toString(),11,Font.PLAIN,Theme.MUTED)); page.add(c); page.add(Box.createVerticalStrut(10));}); return page;
+    }
+
+    private JPanel statCard(String label, String value, String hint) { JPanel c=card(); c.setLayout(new BoxLayout(c,BoxLayout.Y_AXIS)); c.add(Theme.label(label.toUpperCase(),10,Font.BOLD,Theme.MUTED)); c.add(Box.createVerticalStrut(11)); c.add(Theme.label(value,25,Font.BOLD,Theme.TEXT)); c.add(Box.createVerticalStrut(5)); c.add(Theme.label(hint,11,Font.PLAIN,Theme.MUTED)); return c; }
+    private JPanel card(){JPanel p=new JPanel();p.setBackground(Theme.SURFACE);p.setBorder(Theme.cardBorder());return p;}
+    private JPanel verticalPage(){JPanel p=new JPanel();p.setOpaque(false);p.setBorder(new EmptyBorder(14,0,0,0));p.setLayout(new BoxLayout(p,BoxLayout.Y_AXIS));return p;}
+    private JScrollPane tableCard(JTable table){table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);table.setShowVerticalLines(false);table.setSelectionBackground(Theme.SOFT);table.setSelectionForeground(Theme.TEXT);JScrollPane s=new JScrollPane(table);s.setBorder(Theme.cardBorder());s.getViewport().setBackground(Theme.SURFACE);return s;}
+    private DefaultTableModel readOnlyModel(String[] cols){return new DefaultTableModel(cols,0){@Override public boolean isCellEditable(int r,int c){return false;}};}
+    private JLabel fieldLabel(String text){JLabel l=Theme.label(text,12,Font.BOLD,Theme.TEXT);l.setAlignmentX(Component.LEFT_ALIGNMENT);return l;}
+    private JTextField styledTextField(){JTextField f=new JTextField();styleField(f);return f;}
+    private void styleField(JTextField f){f.setMaximumSize(new Dimension(Integer.MAX_VALUE,42));f.setPreferredSize(new Dimension(100,42));f.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(Theme.BORDER,1,true),new EmptyBorder(9,11,9,11)));f.setBackground(Color.WHITE);}
+    private String roleName(User u){return u instanceof JobSeeker?"Job seeker":u instanceof Employer?"Employer":"Administrator";}
+    private String firstName(String name){if(name==null||name.isBlank())return "there";return name.trim().split("\\s+")[0];}
+    private String money(double v){return "$"+String.format("%,.0f",v);}
+    private String pretty(ApplicationStatus s){return s.name().replace('_',' ').toLowerCase().replaceFirst("^.",String.valueOf(Character.toUpperCase(s.name().charAt(0))));}
+    private String skillLine(List<Skill> skills){return skills.stream().map(Skill::getName).reduce((a,b)->a+"  •  "+b).orElse("No skills specified");}
+    private String escape(String s){if(s==null)return "";return s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;");}
+}
+
